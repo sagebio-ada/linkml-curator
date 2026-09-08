@@ -53,9 +53,9 @@
       "enum": [
         "Co-Investigator",
         "Collaborator",
-        "CoordinatingCenter",
+        "Coordinating Center",
         "Other",
-        "PrincipalInvestigator",
+        "Principal Investigator",
         "Trainee"
       ],
       "title": "Role"

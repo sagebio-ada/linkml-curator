@@ -3,9 +3,8 @@
 Run after linkml_to_csv.py has regenerated the CSV from LinkML sources.
 Two build routes are available via --route:
 
-  curator (default) — synapseclient.extensions.curator.generate_jsonschema.
-    Requires the CSV in Curator format (linkml_to_csv.py --format curator)
-    and a Synapse login.
+  curator (default) — synapseclient.extensions.curator. Requires the CSV in
+    Curator format (linkml_to_csv.py --format curator).
 
   schematic — the original schematicpy pipeline (DataModelParser,
     DataModelGraph, DataModelGraphExplorer, create_json_schema). Requires
@@ -61,17 +60,8 @@ def restore_titles(schema: dict) -> None:
             prop["title"] = camel_case_to_title(title)
 
 
-def _strip_ws(s: str) -> str:
-    """Remove whitespace the same way the curator/schematic routes do when they turn a
-    permissible value name into an enum entry (e.g. "Level 1" -> "Level1")."""
-    return re.sub(r"\s+", "", s)
-
-
 def load_enum_value_descriptions(schema_dir: str = PORTAL_SCHEMA_DIR) -> dict[str, dict[str, str]]:
-    """LinkML enum name -> {enum entry (whitespace-stripped): description}.
-
-    Only includes values that actually have a description. Reads both YAML files
-    since enums can be defined in either.
+    """LinkML enum name -> {permissible value: description}.
     """
     descriptions: dict[str, dict[str, str]] = {}
     for filename in ("enums.yaml", "namhub.yaml"):
@@ -82,7 +72,7 @@ def load_enum_value_descriptions(schema_dir: str = PORTAL_SCHEMA_DIR) -> dict[st
             for value, value_def in (enum_def.get("permissible_values") or {}).items():
                 desc = value_def.get("description") if isinstance(value_def, dict) else None
                 if desc:
-                    values[_strip_ws(value)] = re.sub(r"\s+", " ", desc).strip()
+                    values[value] = re.sub(r"\s+", " ", desc).strip()
             if values:
                 descriptions[enum_name] = values
     return descriptions
@@ -108,11 +98,7 @@ def _expand_enum(values: list, value_descriptions: dict) -> list:
         {
             "const": value,
             "title": value,
-            **(
-                {"description": value_descriptions[_strip_ws(value)]}
-                if _strip_ws(value) in value_descriptions
-                else {}
-            ),
+            **({"description": value_descriptions[value]} if value in value_descriptions else {}),
         }
         for value in values
     ]
@@ -162,27 +148,68 @@ def write_schema(schema: dict, output_path: str) -> None:
         json.dump(schema, f, indent=2, sort_keys=True)
 
 
+def relabel_properties(schema: dict, dmge) -> None:
+    """
+    This fix lets use use create_json_schema without stripping needed whitespace.
+    create_json_schema(use_display_labels=True) is what keeps permissible values intact,
+    but that will name everything after its LinkML camelCase slot name ("datasetAssay")
+    even though the rest of the portal expects the node label from synapse ("DatasetAssay").
+    """
+    def label(display_name: str) -> str:
+        node_label = dmge.get_node_label(display_name)
+        if not node_label:
+            raise ValueError(f"No node in the data model graph for property {display_name!r}.")
+        return node_label
+
+    labels = {name: label(name) for name in (schema.get("properties") or {})}
+    schema["properties"] = {labels[name]: prop for name, prop in schema["properties"].items()}
+    if schema.get("required"):
+        schema["required"] = [labels.get(name) or label(name) for name in schema["required"]]
+
+
 def build_with_curator(data_model_source: str, data_types: list[str], output_directory: str) -> None:
+    # synapseclient.generate_jsonschema doesnt support labels we need out of the bos
     from synapseclient import Synapse
-    from synapseclient.extensions.curator import generate_jsonschema
-
-    syn = Synapse()
-    syn.login()
-
-    schemas, file_paths = generate_jsonschema(
-        data_model_source=data_model_source,
-        output=output_directory,
-        data_types=data_types,
-        synapse_client=syn,
+    from synapseclient.extensions.curator.schema_generation import (
+        DataModelGraph,
+        DataModelGraphExplorer,
+        DataModelParser,
+        check_curator_imports,
+        create_json_schema,
     )
 
+    check_curator_imports()
+    # Only used as a logger sink — building a schema from a local CSV touches no API.
+    logger = Synapse().logger
+
+    print(f"Parsing {data_model_source}...")
+    parsed = DataModelParser(path_to_data_model=data_model_source, logger=logger).parse_model()
+
+    print("Building graph...")
+    dmge = DataModelGraphExplorer(DataModelGraph(parsed).graph, logger=logger)
+
+    print("Generating JSON schemas...")
     slot_ranges = load_slot_ranges()
     enum_value_descriptions = load_enum_value_descriptions()
 
-    for schema, output_path in zip(schemas, file_paths):
+    for dt in data_types:
+        output_path = os.path.join(output_directory, f"{dt}.json")
+        schema = create_json_schema(
+            dmge=dmge,
+            datatype=dt,
+            schema_name=dt,
+            logger=logger,
+            write_schema=False,
+            # Keeps permissible values as written in LinkML ("Level 1", not "Level1");
+            # relabel_properties() puts the property keys back afterwards.
+            use_display_labels=True,
+        )
         restore_enum_descriptions(schema, slot_ranges, enum_value_descriptions)
         restore_titles(schema)
+        relabel_properties(schema, dmge)
         write_schema(schema, output_path)
+        n_props = len(schema.get("properties", {}))
+        print(f"  {dt:<15} → {output_path}  ({n_props} properties)")
 
 
 def build_with_schematic(data_model_source: str, data_types: list[str], output_directory: str) -> None:

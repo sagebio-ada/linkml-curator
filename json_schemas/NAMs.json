@@ -54,9 +54,9 @@
           "title": "Deprecated"
         },
         {
-          "const": "InDevelopment",
+          "const": "In Development",
           "description": "Method is being actively developed.",
-          "title": "InDevelopment"
+          "title": "In Development"
         },
         {
           "const": "Prototype",
@@ -131,18 +131,18 @@
       "description": "Organism(s) the NAM is derived from or applicable to.",
       "items": {
         "enum": [
-          "Daniorerio",
-          "Drosophilamelanogaster",
-          "Gallusgallus",
-          "Homosapiens",
-          "Macacanemestrina",
-          "Musmusculus",
-          "Musmusculus(humanized)",
-          "Oryctolaguscuniculus",
-          "Pantroglodytes",
-          "Rattusnorvegicus",
-          "Rhesusmacaque",
-          "Susscrofa",
+          "Danio rerio",
+          "Drosophila melanogaster",
+          "Gallus gallus",
+          "Homo sapiens",
+          "Macaca nemestrina",
+          "Mus musculus",
+          "Mus musculus (humanized)",
+          "Oryctolagus cuniculus",
+          "Pan troglodytes",
+          "Rattus norvegicus",
+          "Rhesus macaque",
+          "Sus scrofa",
           "Unknown"
         ],
         "type": "string"
