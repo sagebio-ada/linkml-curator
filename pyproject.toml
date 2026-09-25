@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "linkml-to-curator"
+version = "0.1.0"
+description = "Generate Synapse Curator JSON schemas from a LinkML model and register them"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+  {name = "Richard Abdill", email = "richard.abdill@sagebase.org"},
+]
+requires-python = ">=3.12"
+keywords = ["linkml", "synapse", "curator", "json-schema"]
+
+dependencies = [
+  "pyyaml>=6",
+  "synapseclient[curator]>=4.13,<5",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/linkml_to_curator"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "README.md"]
