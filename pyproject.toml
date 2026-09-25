@@ -16,10 +16,14 @@ requires-python = ">=3.12"
 keywords = ["linkml", "synapse", "curator", "json-schema"]
 
 dependencies = [
+  "click>=8",
+  "linkml>=1.9.3",
   "linkml-runtime>=1.9.4",
-  "pyyaml>=6",
   "synapseclient[curator]>=4.13,<5",
 ]
+
+[project.scripts]
+gen-curator = "linkml_to_curator.generator:cli"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/linkml_to_curator"]

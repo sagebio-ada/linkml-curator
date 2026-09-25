@@ -18,12 +18,8 @@ Mapping from LinkML:
     multivalued: true  → columnType gets a "_list" suffix (string/boolean)
     pattern            → Pattern
     minimum_value/maximum_value → Minimum/Maximum
-
-Usage:
-    python -m linkml_to_curator.datamodel_csv [--schema namhub.yaml] [--output namhub.model.csv]
 """
 
-import argparse
 import csv
 import io
 import re
@@ -141,17 +137,3 @@ def data_model_csv(sv: SchemaView) -> str:
     writer.writerows(data_model_rows(sv))
     return out.getvalue()
 
-
-def main():
-    parser = argparse.ArgumentParser(description="Convert a LinkML schema to a Curator CSV.")
-    parser.add_argument("--output", default="namhub.model.csv")
-    parser.add_argument("--schema", default="portal_schemas/namhub.yaml")
-    args = parser.parse_args()
-
-    with open(args.output, "w", newline="", encoding="utf-8") as f:
-        f.write(data_model_csv(SchemaView(args.schema)))
-    print(f"Wrote {args.output}")
-
-
-if __name__ == "__main__":
-    main()
