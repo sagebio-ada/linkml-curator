@@ -60,6 +60,18 @@ def template_classes(sv: SchemaView) -> list[str]:
 def value_schema(sv: SchemaView, slot: SlotDefinition) -> dict:
     """Schema for one value of the slot."""
     enum = sv.all_enums().get(slot.range)
+    json_type = None if enum else TYPES.get(slot.range, "string")
+    for keyword, value, needs in (
+        ("pattern", slot.pattern, "string"),
+        ("minimum_value", slot.minimum_value, "number"),
+        ("maximum_value", slot.maximum_value, "number"),
+    ):
+        if value is not None and json_type != needs:
+            raise ValueError(
+                f"Slot {slot.name!r} sets {keyword} ({value!r}), which needs a {needs} range, "
+                f"but its range {slot.range!r} is emitted as {json_type or 'an enum'}."
+            )
+
     if enum:
         pvs = enum.permissible_values
         if not any(pv.description for pv in pvs.values()):
@@ -70,7 +82,7 @@ def value_schema(sv: SchemaView, slot: SlotDefinition) -> dict:
             for v in sorted(pvs)
         ]}
 
-    schema = {"type": TYPES.get(slot.range, "string")}
+    schema = {"type": json_type}
     if slot.range in FORMATS:
         schema["format"] = FORMATS[slot.range]
     if slot.pattern:

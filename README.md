@@ -35,6 +35,9 @@ Every class that is not abstract or a mixin becomes a draft-07 JSON schema. For 
 - multivalued slots are arrays of the single-value schema;
 - `required` lists the slots that class requires.
 
+Generation stops with an error when a constraint doesn't fit the slot's type: `pattern` needs a
+string range, and `minimum_value`/`maximum_value` need a numeric one. Neither applies to enums.
+
 In a [linkml-project-copier](https://github.com/linkml/linkml-project-copier) project, add a
 recipe to `project.justfile`:
 

@@ -1,5 +1,6 @@
 """Shapes the NAMhub fixture doesn't exercise."""
 
+import pytest
 from linkml_runtime import SchemaView
 
 from linkml_to_curator.generator import class_schema, template_classes
@@ -60,3 +61,14 @@ def test_multivalued_values_are_arrays():
 
 def test_linkml_title_wins():
     assert props()["Fancy"]["title"] == "Very Fancy"
+
+
+@pytest.mark.parametrize("slot, message", [
+    ("{range: integer, pattern: '^1'}", "pattern .* needs a string range, but its range 'integer'"),
+    ("{minimum_value: 1}", "minimum_value .* needs a number range, but its range 'string'"),
+    ("{range: Color, maximum_value: 3}", "maximum_value .* is emitted as an enum"),
+])
+def test_constraints_must_fit_the_type(slot, message):
+    schema = SCHEMA.replace("fancy: {title: Very Fancy}", f"fancy: {slot}")
+    with pytest.raises(ValueError, match=f"Slot 'fancy' sets {message}"):
+        class_schema(SchemaView(schema), "Probe")
