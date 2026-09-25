@@ -1,18 +1,18 @@
-"""Convert NAMHub LinkML schemas to a Curator-compatible CSV data model.
+"""Build the Synapse Curator data-model CSV from a LinkML schema.
 
-Reads portal_schemas/namhub.yaml and portal_schemas/enums.yaml and writes
-namhub.model.csv, for use with synapseclient.extensions.curator. Headers:
+Curator builds JSON schemas from a CSV with one template row per class and one
+attribute row per slot. Headers:
     Attribute, Description, Valid Values, DependsOn, Required, Properties,
     Validation Rules, columnType, Format, Pattern, Minimum, Maximum,
     IsTemplate, Source
 
 Mapping from LinkML:
-    class             → template row: DependsOn = slot list, IsTemplate = True
-    slot              → attribute row: Required = True if required in the
-                        base slot definition or any class slot_usage
-    range: <Enum>     → Valid Values = comma-separated permissible_values
-    range: date       → columnType = string, Format = date
-    range: uri        → columnType = string, Format = uri
+    class              → template row: DependsOn = class slots, IsTemplate = True
+    slot               → attribute row, emitted once however many classes use it
+    required           → Required = True if the slot is required in any class
+    range: <Enum>      → Valid Values = comma-separated permissible values
+    range: date        → columnType = string, Format = date
+    range: uri         → columnType = string, Format = uri
     range: integer     → columnType = number
     range: boolean     → columnType = boolean
     multivalued: true  → columnType gets a "_list" suffix (string/boolean)
@@ -20,17 +20,16 @@ Mapping from LinkML:
     minimum_value/maximum_value → Minimum/Maximum
 
 Usage:
-    python linkml_to_csv.py [--output namhub.model.csv]
+    python -m linkml_to_curator.datamodel_csv [--schema namhub.yaml] [--output namhub.model.csv]
 """
 
 import argparse
 import csv
+import io
 import re
-from pathlib import Path
 
-import yaml
-
-SCHEMA_DIR = Path("portal_schemas")
+from linkml_runtime import SchemaView
+from linkml_runtime.linkml_model.meta import SlotDefinition
 
 CURATOR_HEADERS = [
     "Attribute",
@@ -49,170 +48,109 @@ CURATOR_HEADERS = [
     "Source",
 ]
 
-
-# ── Helpers ────────────────────────────────────────────────────────────────────
-
-def load_yaml(path: Path) -> dict:
-    with open(path) as f:
-        return yaml.safe_load(f)
+# Fields an attribute row carries. The row is shared by every class using the slot,
+# so the classes must agree on them.
+SHARED_FIELDS = ("range", "multivalued", "pattern", "minimum_value", "maximum_value")
 
 
-def normalise_text(s: str) -> str:
-    if not s:
-        return ""
-    return re.sub(r"\s+", " ", s).strip()
+def normalise_text(s: str | None) -> str:
+    return re.sub(r"\s+", " ", s).strip() if s else ""
 
 
-def build_enum_lookup(enums_schema: dict, namhub_schema: dict) -> dict[str, list[str]]:
-    lookup: dict[str, list[str]] = {}
-    for schema in (enums_schema, namhub_schema):
-        for name, defn in (schema.get("enums") or {}).items():
-            pv = defn.get("permissible_values") or {}
-            lookup[name] = list(pv.keys())
-    return lookup
+def template_classes(sv: SchemaView) -> list[str]:
+    """Classes that become Curator templates: every class that is not abstract or a mixin."""
+    return [name for name, c in sv.all_classes().items() if not (c.abstract or c.mixin)]
 
 
-def get_valid_values(slot_def: dict, enum_lookup: dict) -> str:
-    range_ = slot_def.get("range", "string")
-    if range_ in enum_lookup:
-        return ", ".join(enum_lookup[range_])
-    return ""
+def get_column_type(slot: SlotDefinition) -> tuple[str, str]:
+    """Return (columnType, Format) for a slot based on its LinkML range.
 
-
-def get_column_type(slot_def: dict) -> tuple[str, str]:
-    """Return (columnType, Format) for a slot based on its LinkML range."""
-    range_ = slot_def.get("range", "string")
-    multivalued = bool(slot_def.get("multivalued"))
-
-    if range_ == "date":
+    integer maps to number: Synapse types a DOUBLE column from its data, and its
+    validator rejects a double such as 30.0 against a JSON "integer".
+    """
+    if slot.range == "date":
         base, fmt = "string", "date"
-    elif range_ == "uri":
+    elif slot.range == "uri":
         base, fmt = "string", "uri"
-    elif range_ == "integer":
+    elif slot.range == "integer":
         base, fmt = "number", ""
-    elif range_ == "boolean":
+    elif slot.range == "boolean":
         base, fmt = "boolean", ""
     else:
         # plain string range, or an enum range (valid values carry the constraint)
         base, fmt = "string", ""
 
-    if multivalued and base in ("string", "boolean"):
+    if slot.multivalued and base in ("string", "boolean"):
         return f"{base}_list", fmt
     return base, fmt
 
 
-def build_slot_required(namhub_schema: dict) -> dict[str, bool]:
-    """slot_name → True if required in the base slot definition or any class slot_usage."""
-    all_slots: dict[str, dict] = namhub_schema.get("slots") or {}
-    all_classes: dict[str, dict] = namhub_schema.get("classes") or {}
+def attribute_row(sv: SchemaView, slot_name: str, class_names: list[str]) -> dict:
+    induced = [sv.induced_slot(slot_name, c) for c in class_names]
+    slot = induced[0]
+    for other, class_name in zip(induced[1:], class_names[1:], strict=True):
+        for field in SHARED_FIELDS:
+            if getattr(other, field) != getattr(slot, field):
+                raise ValueError(
+                    f"Slot {slot_name!r} has {field}={getattr(other, field)!r} in "
+                    f"{class_name} but {getattr(slot, field)!r} in {class_names[0]}. "
+                    "The Curator CSV has one row per slot and cannot represent both."
+                )
 
-    slot_required: dict[str, bool] = {}
-    for slot_name, slot_def in all_slots.items():
-        if slot_def.get("required"):
-            slot_required[slot_name] = True
-    for class_def in all_classes.values():
-        for slot_name, usage in (class_def.get("slot_usage") or {}).items():
-            if usage.get("required"):
-                slot_required[slot_name] = True
-    return slot_required
-
-
-def merge_slot_def(slot_name: str, namhub_schema: dict) -> dict:
-    """Base slot definition merged with slot_usage overrides from every class that uses it."""
-    all_slots: dict[str, dict] = namhub_schema.get("slots") or {}
-    all_classes: dict[str, dict] = namhub_schema.get("classes") or {}
-
-    merged = dict(all_slots.get(slot_name) or {})
-    for class_def in all_classes.values():
-        usage = (class_def.get("slot_usage") or {}).get(slot_name, {})
-        if usage:
-            merged.update(usage)
-    return merged
+    enum = sv.all_enums().get(slot.range)
+    column_type, fmt = get_column_type(slot)
+    return {
+        "Attribute": slot_name,
+        "Description": normalise_text(slot.description),
+        "Valid Values": ", ".join(enum.permissible_values) if enum else "",
+        "Required": str(any(s.required for s in induced)),
+        "columnType": column_type,
+        "Format": fmt,
+        "Pattern": slot.pattern or "",
+        "Minimum": "" if slot.minimum_value is None else slot.minimum_value,
+        "Maximum": "" if slot.maximum_value is None else slot.maximum_value,
+    }
 
 
-# ── Curator format ──────────────────────────────────────────────────────────────
-
-def convert_curator(namhub_schema: dict, enums_schema: dict) -> list[dict]:
-    enum_lookup = build_enum_lookup(enums_schema, namhub_schema)
-    all_classes: dict[str, dict] = namhub_schema.get("classes") or {}
-    slot_required = build_slot_required(namhub_schema)
+def data_model_rows(sv: SchemaView) -> list[dict]:
+    templates = template_classes(sv)
+    slot_classes = {c: sv.class_slots(c) for c in templates}
 
     rows: list[dict] = []
-    emitted_slots: set[str] = set()
-
-    for class_name, class_def in all_classes.items():
-        class_slots: list[str] = class_def.get("slots") or []
-
-        # Template row — DependsOn lists the slots for this template
+    emitted: set[str] = set()
+    for class_name, slots in slot_classes.items():
         rows.append({
             "Attribute": class_name,
-            "Description": normalise_text(class_def.get("description", "")),
-            "Valid Values": "",
-            "DependsOn": ", ".join(class_slots),
-            "Required": "",
-            "Properties": "",
-            "Validation Rules": "",
-            "columnType": "",
-            "Format": "",
-            "Pattern": "",
-            "Minimum": "",
-            "Maximum": "",
+            "Description": normalise_text(sv.get_class(class_name).description),
+            "DependsOn": ", ".join(slots),
             "IsTemplate": "True",
-            "Source": "",
         })
-
-        # Slot rows (emitted once globally)
-        for slot_name in class_slots:
-            if slot_name in emitted_slots:
+        for slot_name in slots:
+            if slot_name in emitted:
                 continue
-            emitted_slots.add(slot_name)
-
-            merged = merge_slot_def(slot_name, namhub_schema)
-            desc = normalise_text(merged.get("description", ""))
-            valid_vals = get_valid_values(merged, enum_lookup)
-            column_type, fmt = get_column_type(merged)
-            required = "True" if slot_required.get(slot_name) else "False"
-
-            rows.append({
-                "Attribute": slot_name,
-                "Description": desc,
-                "Valid Values": valid_vals,
-                "DependsOn": "",
-                "Required": required,
-                "Properties": "",
-                "Validation Rules": "",
-                "columnType": column_type,
-                "Format": fmt,
-                "Pattern": merged.get("pattern", ""),
-                "Minimum": merged.get("minimum_value", ""),
-                "Maximum": merged.get("maximum_value", ""),
-                "IsTemplate": "",
-                "Source": "",
-            })
-
+            emitted.add(slot_name)
+            users = [c for c, s in slot_classes.items() if slot_name in s]
+            rows.append(attribute_row(sv, slot_name, users))
     return rows
 
 
+def data_model_csv(sv: SchemaView) -> str:
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=CURATOR_HEADERS, restval="")
+    writer.writeheader()
+    writer.writerows(data_model_rows(sv))
+    return out.getvalue()
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Convert LinkML schemas to a Curator-compatible CSV.")
+    parser = argparse.ArgumentParser(description="Convert a LinkML schema to a Curator CSV.")
     parser.add_argument("--output", default="namhub.model.csv")
-    parser.add_argument("--schema", default=str(SCHEMA_DIR / "namhub.yaml"))
-    parser.add_argument("--enums", default=str(SCHEMA_DIR / "enums.yaml"))
+    parser.add_argument("--schema", default="portal_schemas/namhub.yaml")
     args = parser.parse_args()
 
-    namhub_schema = load_yaml(Path(args.schema))
-    enums_schema = load_yaml(Path(args.enums))
-
-    rows = convert_curator(namhub_schema, enums_schema)
-
     with open(args.output, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=CURATOR_HEADERS)
-        writer.writeheader()
-        writer.writerows(rows)
-
-    templates = sum(1 for r in rows if r["IsTemplate"] == "True")
-    slots = len(rows) - templates
-    print(f"Wrote {len(rows)} rows ({templates} templates, {slots} slots) → {args.output}")
+        f.write(data_model_csv(SchemaView(args.schema)))
+    print(f"Wrote {args.output}")
 
 
 if __name__ == "__main__":
