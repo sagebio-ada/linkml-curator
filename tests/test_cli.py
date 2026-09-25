@@ -20,8 +20,3 @@ def test_unknown_top_class():
     result = CliRunner().invoke(cli, [str(SCHEMA), "-t", "Nope"])
     assert "not a template class" in str(result.exception)
 
-
-def test_csv_output_is_the_data_model_verbatim():
-    result = CliRunner().invoke(cli, [str(SCHEMA), "-f", "csv"])
-    assert result.exit_code == 0, result.output
-    assert result.stdout_bytes == (EXPECTED / "namhub.model.csv").read_bytes()

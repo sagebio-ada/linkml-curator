@@ -1,36 +1,48 @@
 """LinkML generator for Synapse Curator JSON schemas.
 
-The schema is converted to Curator's data-model CSV (see datamodel_csv), which
-synapseclient.extensions.curator turns into one JSON schema per template class.
-Those schemas are then post-processed:
+Each template class (every class that is not abstract or a mixin) becomes a
+draft-07 JSON schema shaped for Curator's grid and the RJSF forms that render it:
 
-- enum values with descriptions become oneOf/const entries, which RJSF renders;
-- property titles come from the slot's LinkML title, or from its name;
-- property keys go back to Curator's PascalCase node labels.
+- properties are keyed by the PascalCase slot name (datasetAssay → DatasetAssay);
+- a property's title is the slot's LinkML title, or one derived from its name;
+- enum values are sorted, and if any value has a description the enum becomes
+  oneOf/const entries, the only per-value metadata RJSF reads;
+- integer, float, double and decimal are typed number (see CLAUDE.md);
+- multivalued slots are arrays of the single-value schema.
 
 Usage:
     gen-curator schema.yaml -d DIR       # one <Class>.json per template class
     gen-curator schema.yaml -t Class     # one class, to stdout
-    gen-curator schema.yaml -f csv       # the intermediate data-model CSV
 """
 
 import json
 import os
 import re
-import tempfile
 from dataclasses import dataclass
 from importlib.metadata import version
 
 import click
 from linkml.utils.generator import Generator, shared_arguments
-
-from linkml_to_curator.datamodel_csv import data_model_csv, normalise_text, template_classes
+from linkml_runtime import SchemaView
+from linkml_runtime.linkml_model.meta import SlotDefinition
 
 __version__ = version("linkml-to-curator")
 
+TYPES = {"integer": "number", "float": "number", "double": "number", "decimal": "number",
+         "boolean": "boolean"}
+FORMATS = {"date": "date", "datetime": "date-time", "uri": "uri"}
+
+
+def normalise_text(s: str) -> str:
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def pascal_case(name: str) -> str:
+    return "".join(part[:1].upper() + part[1:] for part in re.split(r"[_\s]+", name))
+
 
 def camel_case_to_title(name: str) -> str:
-    """Convert a camelCase slot name into a human-readable Title Case label.
+    """Convert a camelCase slot name into a Title Case label.
 
     A trailing "Id" word becomes "_id" (e.g. "landscapeId" -> "Landscape_id").
     """
@@ -41,74 +53,64 @@ def camel_case_to_title(name: str) -> str:
     return title
 
 
-def restore_titles(schema: dict, titles: dict[str, str | None]) -> None:
-    """Replace each property's slot-name title with its LinkML title, in place.
-
-    titles maps slot name to the slot's LinkML title; a slot without one gets
-    camel_case_to_title() of its name.
-    """
-    for prop in (schema.get("properties") or {}).values():
-        name = prop.get("title")
-        if name:
-            prop["title"] = titles.get(name) or camel_case_to_title(name)
+def template_classes(sv: SchemaView) -> list[str]:
+    return [name for name, c in sv.all_classes().items() if not (c.abstract or c.mixin)]
 
 
-def _expand_enum(values: list, value_descriptions: dict) -> list:
-    return [
-        {
-            "const": value,
-            "title": value,
-            **({"description": value_descriptions[value]} if value in value_descriptions else {}),
-        }
-        for value in values
-    ]
+def value_schema(sv: SchemaView, slot: SlotDefinition) -> dict:
+    """Schema for one value of the slot."""
+    enum = sv.all_enums().get(slot.range)
+    if enum:
+        pvs = enum.permissible_values
+        if not any(pv.description for pv in pvs.values()):
+            return {"enum": sorted(pvs)}
+        return {"oneOf": [
+            {"const": v, "title": v,
+             **({"description": normalise_text(pvs[v].description)} if pvs[v].description else {})}
+            for v in sorted(pvs)
+        ]}
+
+    schema = {"type": TYPES.get(slot.range, "string")}
+    if slot.range in FORMATS:
+        schema["format"] = FORMATS[slot.range]
+    if slot.pattern:
+        schema["pattern"] = slot.pattern
+    if slot.minimum_value is not None:
+        schema["minimum"] = slot.minimum_value
+    if slot.maximum_value is not None:
+        schema["maximum"] = slot.maximum_value
+    return schema
 
 
-def restore_enum_descriptions(
-    schema: dict, slot_ranges: dict, enum_value_descriptions: dict
-) -> None:
-    """Attach permissible-value descriptions to enum properties, in place.
+def class_schema(sv: SchemaView, class_name: str) -> dict:
+    properties, required = {}, []
+    for name in sv.class_slots(class_name):
+        slot = sv.induced_slot(name, class_name)
+        value = value_schema(sv, slot)
+        if slot.multivalued:
+            value = {"type": "array", "items": {"type": "string", **value}}
+        prop = {"title": slot.title or camel_case_to_title(name), **value}
+        if slot.description:
+            prop["description"] = normalise_text(slot.description)
+        properties[pascal_case(name)] = prop
+        if slot.required:
+            required.append(pascal_case(name))
 
-    Curator emits a raw enum list, directly on the property or under "items" for
-    multivalued slots, with no way to carry per-value metadata. RJSF (the form renderer
-    downstream) only recognizes per-value metadata on "oneOf" entries with a "const", so
-    the enum is rewritten into that shape. Must run before restore_titles(), since it keys
-    off each property's slot-name title.
-    """
-    for prop in (schema.get("properties") or {}).values():
-        slot_name = prop.get("title")
-        if not slot_name:
-            continue
-        value_descriptions = enum_value_descriptions.get(slot_ranges.get(slot_name))
-        if not value_descriptions:
-            continue
-
-        if "items" in prop and "enum" in prop["items"]:
-            prop["items"]["oneOf"] = _expand_enum(prop["items"]["enum"], value_descriptions)
-            del prop["items"]["enum"]
-        elif "enum" in prop:
-            prop["oneOf"] = _expand_enum(prop["enum"], value_descriptions)
-            del prop["enum"]
+    schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "$id": f"http://example.com/{class_name}",
+        "title": class_name,
+        "type": "object",
+        "properties": properties,
+        "required": sorted(required),
+    }
+    if description := sv.get_class(class_name).description:
+        schema["description"] = normalise_text(description)
+    return schema
 
 
-def relabel_properties(schema: dict, dmge) -> None:
-    """Rename property keys from slot names ("datasetAssay") to node labels ("DatasetAssay").
-
-    create_json_schema(use_display_labels=True) is what keeps permissible values intact,
-    but that same flag keys every property by its slot name, while the portal expects
-    Curator's node label.
-    """
-
-    def label(display_name: str) -> str:
-        node_label = dmge.get_node_label(display_name)
-        if not node_label:
-            raise ValueError(f"No node in the data model graph for property {display_name!r}.")
-        return node_label
-
-    labels = {name: label(name) for name in (schema.get("properties") or {})}
-    schema["properties"] = {labels[name]: prop for name, prop in schema["properties"].items()}
-    if schema.get("required"):
-        schema["required"] = [labels.get(name) or label(name) for name in schema["required"]]
+def _dump(schema: dict) -> str:
+    return json.dumps(schema, indent=2, sort_keys=True)
 
 
 @dataclass
@@ -117,7 +119,7 @@ class CuratorGenerator(Generator):
 
     generatorname = os.path.basename(__file__)
     generatorversion = __version__
-    valid_formats = ["json", "csv"]
+    valid_formats = ["json"]
     uses_schemaloader = False
     requires_metamodel = False
 
@@ -128,88 +130,24 @@ class CuratorGenerator(Generator):
     """Write one <Class>.json per class here instead of returning the schema."""
 
     def serialize(self, **kwargs) -> str:
-        if self.format == "csv":
-            return data_model_csv(self.schemaview)
-
         templates = template_classes(self.schemaview)
         if self.top_class:
             if self.top_class not in templates:
                 raise ValueError(f"{self.top_class!r} is not a template class: {templates}")
             templates = [self.top_class]
-        if not self.directory and len(templates) > 1:
-            raise ValueError(
-                f"The schema has {len(templates)} template classes. "
-                "Pass --directory to write them all, or --top-class to pick one."
-            )
-
-        schemas = self.build(templates)
         if not self.directory:
-            return _dump(schemas[templates[0]])
+            if len(templates) > 1:
+                raise ValueError(
+                    f"The schema has {len(templates)} template classes. "
+                    "Pass --directory to write them all, or --top-class to pick one."
+                )
+            return _dump(class_schema(self.schemaview, templates[0]))
+
         os.makedirs(self.directory, exist_ok=True)
-        for name, schema in schemas.items():
+        for name in templates:
             with open(os.path.join(self.directory, f"{name}.json"), "w") as f:
-                f.write(_dump(schema))
+                f.write(_dump(class_schema(self.schemaview, name)))
         return ""
-
-    def build(self, class_names: list[str]) -> dict[str, dict]:
-        """Build each class's post-processed JSON schema through Curator."""
-        # Why the non-public create_json_schema: the public generate_jsonschema ties
-        # use_display_labels to property-key format, and no combination of its arguments
-        # yields space-preserving enum values with node-label keys.
-        from synapseclient.extensions.curator.schema_generation import (
-            DataModelGraph,
-            DataModelGraphExplorer,
-            DataModelParser,
-            check_curator_imports,
-            create_json_schema,
-        )
-
-        check_curator_imports()
-        sv = self.schemaview
-        with tempfile.TemporaryDirectory() as tmp:
-            csv_path = os.path.join(tmp, "model.csv")
-            with open(csv_path, "w", newline="", encoding="utf-8") as f:
-                f.write(data_model_csv(sv))
-            parsed = DataModelParser(path_to_data_model=csv_path, logger=self.logger).parse_model()
-        dmge = DataModelGraphExplorer(DataModelGraph(parsed).graph, logger=self.logger)
-
-        enum_value_descriptions = {
-            enum_name: values
-            for enum_name, enum in sv.all_enums().items()
-            if (values := {
-                text: normalise_text(pv.description)
-                for text, pv in enum.permissible_values.items()
-                if pv.description
-            })
-        }
-
-        schemas = {}
-        for class_name in class_names:
-            slots = {s: sv.induced_slot(s, class_name) for s in sv.class_slots(class_name)}
-            schema = create_json_schema(
-                dmge=dmge,
-                datatype=class_name,
-                schema_name=class_name,
-                logger=self.logger,
-                write_schema=False,
-                # Keeps permissible values as written in LinkML ("Level 1", not "Level1");
-                # relabel_properties() puts the property keys back afterwards.
-                use_display_labels=True,
-            )
-            restore_enum_descriptions(
-                schema, {s: slot.range for s, slot in slots.items()}, enum_value_descriptions
-            )
-            # The CSV's Required column is shared by every class using a slot; keep only
-            # the slots this class requires.
-            schema["required"] = [s for s in schema.get("required", []) if slots[s].required]
-            restore_titles(schema, {s: slot.title for s, slot in slots.items()})
-            relabel_properties(schema, dmge)
-            schemas[class_name] = schema
-        return schemas
-
-
-def _dump(schema: dict) -> str:
-    return json.dumps(schema, indent=2, sort_keys=True)
 
 
 @shared_arguments(CuratorGenerator)
@@ -226,7 +164,7 @@ def cli(yamlfile, **args):
     """Generate Synapse Curator JSON schemas from a LinkML model."""
     output = CuratorGenerator(yamlfile, **args).serialize()
     if output:
-        click.echo(output, nl=not output.endswith("\n"))
+        click.echo(output)
 
 
 if __name__ == "__main__":

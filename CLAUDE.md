@@ -3,23 +3,18 @@
 This file records the reasons behind choices that look arbitrary in the code. Read it before
 changing generator behavior.
 
-## The pipeline
+## The generator writes Curator's JSON shape itself
 
-`gen-curator` converts the LinkML schema to Curator's data-model CSV (`datamodel_csv.py`).
-synapseclient's curator extension builds a graph from that CSV and emits one JSON schema per
-template class. `generator.py` then post-processes each schema. `tests/fixtures/expected/`
-is the output for the NAMhub model, and every change to it should be deliberate.
+`gen-curator` builds each schema straight from SchemaView. It does not go through
+synapseclient's curator extension, which needs a CSV data model and a graph. That route keyed
+every enum value and property off one `use_display_labels` flag, so it could not produce
+space-preserving enum values together with PascalCase keys, and the generator ended up
+undoing most of its output. The JSON matches what that route produced for the NAMhub model
+byte for byte (`tests/fixtures/expected/`). Where the NAMhub model didn't exercise it, the
+route had quirks that are deliberately not reproduced: "TBD" for missing descriptions,
+multivalued numbers emitted as scalars, and `float` typed as `string`.
 
-## Why the generator calls non-public curator functions
-
-`generate_jsonschema`, the public entry point, sets
-`use_display_labels=(data_model_labels == "display_label")`, and that one flag controls both
-enum values and property keys. With class labels, permissible values come out as node labels
-("Level1" rather than "Level 1"). No combination of its arguments yields spaced enum values
-together with PascalCase property keys. The generator therefore calls `create_json_schema`
-with `use_display_labels=True` and `relabel_properties()` restores the keys. The last
-synapseclient version checked was 4.13.0. If synapseclient decouples the two, switch back to
-`generate_jsonschema`.
+`$id` is a placeholder; `curator-register` sets the real one.
 
 ## integer maps to number
 
@@ -28,15 +23,10 @@ column DOUBLE. Its validator, everit json-schema, accepts only Integer/Long/BigI
 `"type": "integer"`, so a double such as `30.0` would fail. Typing integer slots as `number`
 lets fractional counts through. Keep `range: integer` in the model for its meaning.
 
-## One CSV row per slot
+## Enum values with descriptions become oneOf/const
 
-Curator's data model has one attribute row per slot, shared by every template that uses it.
-Consequences:
-
-- When classes disagree on a slot's range, multivalued, pattern or bounds, generation stops
-  with an error. The CSV can't represent both.
-- Required is the union across classes in the CSV. The generator then filters each
-  schema's `required` down to the slots that class requires.
+RJSF, which renders the Curator forms, only reads per-value metadata from `oneOf` entries
+with a `const`. An enum without any value descriptions stays a plain `enum`.
 
 ## Registration versions
 

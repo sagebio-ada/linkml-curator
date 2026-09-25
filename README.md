@@ -20,22 +20,20 @@ uv add --dev "linkml-to-curator @ git+https://github.com/sagebio-ada/linkml-to-c
 ```bash
 gen-curator schema.yaml -d project/curator   # one <Class>.json per template class
 gen-curator schema.yaml -t Landscape         # one class, to stdout
-gen-curator schema.yaml -f csv               # the intermediate Curator data-model CSV
 ```
 
-Every class that is not abstract or a mixin becomes a template. For each one:
+Every class that is not abstract or a mixin becomes a draft-07 JSON schema. For each one:
 
-- slots become properties keyed by Curator's PascalCase node label (`datasetAssay` →
-  `DatasetAssay`);
-- enum values keep their spaces, and values with a description become `oneOf` entries with
-  `const`, `title` and `description`;
+- slots, inherited ones included, become properties keyed by PascalCase slot name
+  (`datasetAssay` and `dataset_assay` → `DatasetAssay`);
 - a property's title is the slot's LinkML `title:`, or else one derived from the slot name
   (`uploadByDate` → `Upload By Date`, `landscapeId` → `Landscape_id`);
-- `required` lists the slots that class requires;
-- `integer` slots are typed `number`.
-
-A slot shared by several classes has to agree across them on range, multivalued, pattern
-and bounds, because Curator's data model has one row per slot. `required` may differ.
+- enum values are sorted, and if any value has a description they become `oneOf` entries
+  with `const`, `title` and `description`;
+- `integer`, `float`, `double` and `decimal` are typed `number`; `date`, `datetime` and `uri`
+  are strings with a `format`;
+- multivalued slots are arrays of the single-value schema;
+- `required` lists the slots that class requires.
 
 In a [linkml-project-copier](https://github.com/linkml/linkml-project-copier) project, add a
 recipe to `project.justfile`:
@@ -81,5 +79,4 @@ and review the diff:
 
 ```bash
 uv run gen-curator tests/fixtures/namhub/namhub.yaml -d tests/fixtures/expected
-uv run gen-curator tests/fixtures/namhub/namhub.yaml -f csv > tests/fixtures/expected/namhub.model.csv
 ```

@@ -19,7 +19,7 @@ dependencies = [
   "click>=8",
   "linkml>=1.9.3",
   "linkml-runtime>=1.9.4",
-  "synapseclient[curator]>=4.13,<5",
+  "synapseclient>=4.13,<5",
 ]
 
 [project.scripts]
@@ -48,7 +48,3 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# synapseclient calls its own deprecated helper for every node (SYNPY-1724).
-filterwarnings = [
-  "ignore:Call to deprecated function.*_get_validation_rule_based_fields:DeprecationWarning",
-]
