@@ -24,6 +24,7 @@ dependencies = [
 
 [project.scripts]
 gen-curator = "linkml_to_curator.generator:cli"
+curator-register = "linkml_to_curator.register:cli"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/linkml_to_curator"]
