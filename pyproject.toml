@@ -25,3 +25,24 @@ packages = ["src/linkml_to_curator"]
 
 [tool.hatch.build.targets.sdist]
 include = ["src", "tests", "README.md"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "ruff>=0.6",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# synapseclient calls its own deprecated helper for every node (SYNPY-1724).
+filterwarnings = [
+  "ignore:Call to deprecated function.*_get_validation_rule_based_fields:DeprecationWarning",
+]
