@@ -29,3 +29,10 @@ def test_titles(schemas):
     props = schemas["Landscape"]["properties"]
     assert props["LandscapeId"]["title"] == "Landscape_id"
     assert props["UploadByDate"]["title"] == "Upload By Date"
+
+
+def test_required_is_per_class(schemas):
+    # studyId is required only by Studies' slot_usage, though Datasets uses it too.
+    assert "StudyId" in schemas["Studies"]["required"]
+    assert "StudyId" not in schemas["Datasets"]["required"]
+    assert "StudyId" in schemas["Datasets"]["properties"]

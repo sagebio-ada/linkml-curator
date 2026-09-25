@@ -199,6 +199,9 @@ class CuratorGenerator(Generator):
             restore_enum_descriptions(
                 schema, {s: slot.range for s, slot in slots.items()}, enum_value_descriptions
             )
+            # The CSV's Required column is shared by every class using a slot; keep only
+            # the slots this class requires.
+            schema["required"] = [s for s in schema.get("required", []) if slots[s].required]
             restore_titles(schema, {s: slot.title for s, slot in slots.items()})
             relabel_properties(schema, dmge)
             schemas[class_name] = schema

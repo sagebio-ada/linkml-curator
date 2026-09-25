@@ -548,9 +548,6 @@
     }
   },
   "required": [
-    "NamId",
-    "StudyId",
-    "StudyName",
     "Title"
   ],
   "title": "Datasets",

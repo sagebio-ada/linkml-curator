@@ -355,10 +355,7 @@
     }
   },
   "required": [
-    "GrantId",
-    "NamId",
-    "PublicationTitle",
-    "StudyId"
+    "PublicationTitle"
   ],
   "title": "Publications",
   "type": "object"

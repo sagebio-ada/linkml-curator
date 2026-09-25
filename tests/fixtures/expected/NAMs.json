@@ -185,8 +185,7 @@
   },
   "required": [
     "NamId",
-    "NamName",
-    "StudyId"
+    "NamName"
   ],
   "title": "NAMs",
   "type": "object"
