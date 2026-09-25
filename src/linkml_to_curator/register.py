@@ -18,7 +18,6 @@ from pathlib import Path
 
 import click
 from linkml_runtime import SchemaView
-from synapseclient.core.exceptions import SynapseHTTPError
 
 
 def resolve_version(version: str | None, schema_path: str | None) -> str:
@@ -33,12 +32,7 @@ def resolve_version(version: str | None, schema_path: str | None) -> str:
 
 
 def registered_versions(service, org: str, name: str) -> set[str]:
-    try:
-        versions = list(service.list_json_schema_versions(org, name))
-    except SynapseHTTPError as e:
-        if e.response is not None and e.response.status_code == 404:
-            return set()
-        raise
+    versions = service.list_json_schema_versions(org, name)
     return {v["semanticVersion"] for v in versions if v.get("semanticVersion")}
 
 
