@@ -1,21 +1,14 @@
 """Generate JSON Schema files from namhub.model.csv.
 
-Run after linkml_to_csv.py has regenerated the CSV from LinkML sources.
-Two build routes are available via --route:
+Run after linkml_to_csv.py has regenerated the CSV from LinkML sources. The
+schemas are built with synapseclient.extensions.curator.
 
-  curator (default) — synapseclient.extensions.curator. Requires the CSV in
-    Curator format (linkml_to_csv.py --format curator).
-
-  schematic — the original schematicpy pipeline (DataModelParser,
-    DataModelGraph, DataModelGraphExplorer, create_json_schema). Requires
-    the CSV in schematic format (linkml_to_csv.py --format schematic).
-
-Both routes title each property after the underlying LinkML slot's camelCase
-name (e.g. "datasetAssay"); restore_titles() converts that back to a
+Each property is titled after the underlying LinkML slot's camelCase name
+(e.g. "datasetAssay"); restore_titles() converts that back to a
 human-readable label (e.g. "Dataset Assay") before the schema is written.
 
 Usage:
-    python create_json_from_model.py [--route curator|schematic]
+    python create_json_from_model.py
 """
 
 import argparse
@@ -107,14 +100,11 @@ def _expand_enum(values: list, value_descriptions: dict) -> list:
 def restore_enum_descriptions(schema: dict, slot_ranges: dict, enum_value_descriptions: dict) -> None:
     """Attach permissible-value descriptions to enum properties, in place.
 
-    Both routes emit a raw enum list with no way to carry per-value metadata. The curator
-    route puts it directly on the property (or under "items" for multivalued slots). The
-    schematic route wraps it in "oneOf" instead — as its lone entry for a required slot,
-    or alongside a {"type": "null"} branch for an optional one — so the enum-bearing
-    branch has to be located by scanning rather than assumed to be the only one. RJSF (the
-    form renderer downstream) only recognizes per-value metadata on "oneOf" entries with a
-    "const", so that's the shape used here regardless of which raw shape came in. Must run
-    before restore_titles(), since it keys off each property's original camelCase title.
+    Curator emits a raw enum list, directly on the property or under "items" for
+    multivalued slots, with no way to carry per-value metadata. RJSF (the form renderer
+    downstream) only recognizes per-value metadata on "oneOf" entries with a "const", so
+    the enum is rewritten into that shape. Must run before restore_titles(), since it keys
+    off each property's original camelCase title.
     """
     for prop in (schema.get("properties") or {}).values():
         slot_name = prop.get("title")
@@ -124,18 +114,7 @@ def restore_enum_descriptions(schema: dict, slot_ranges: dict, enum_value_descri
         if not value_descriptions:
             continue
 
-        one_of_wrapper = prop.get("oneOf")
-        enum_index = None
-        if isinstance(one_of_wrapper, list):
-            enum_index = next(
-                (i for i, branch in enumerate(one_of_wrapper) if isinstance(branch, dict) and "enum" in branch),
-                None,
-            )
-
-        if enum_index is not None:
-            expanded = _expand_enum(one_of_wrapper[enum_index]["enum"], value_descriptions)
-            prop["oneOf"] = one_of_wrapper[:enum_index] + expanded + one_of_wrapper[enum_index + 1 :]
-        elif "items" in prop and "enum" in prop["items"]:
+        if "items" in prop and "enum" in prop["items"]:
             prop["items"]["oneOf"] = _expand_enum(prop["items"]["enum"], value_descriptions)
             del prop["items"]["enum"]
         elif "enum" in prop:
@@ -212,58 +191,17 @@ def build_with_curator(data_model_source: str, data_types: list[str], output_dir
         print(f"  {dt:<15} → {output_path}  ({n_props} properties)")
 
 
-def build_with_schematic(data_model_source: str, data_types: list[str], output_directory: str) -> None:
-    from schematic.schemas.data_model_parser import DataModelParser
-    from schematic.schemas.data_model_graph import DataModelGraph, DataModelGraphExplorer
-    from schematic.schemas.create_json_schema import create_json_schema
-
-    print(f"Parsing {data_model_source}...")
-    parser = DataModelParser(data_model_source)
-    parsed = parser.parse_model()
-
-    print("Building graph...")
-    graph = DataModelGraph(parsed)
-    dmge = DataModelGraphExplorer(graph.graph)
-
-    print("Generating JSON schemas...")
-    slot_ranges = load_slot_ranges()
-    enum_value_descriptions = load_enum_value_descriptions()
-
-    for dt in data_types:
-        output_path = os.path.join(output_directory, f"{dt}.json")
-        try:
-            schema = create_json_schema(
-                dmge=dmge,
-                datatype=dt,
-                schema_name=dt,
-                write_schema=False,
-            )
-            restore_enum_descriptions(schema, slot_ranges, enum_value_descriptions)
-            restore_titles(schema)
-            write_schema(schema, output_path)
-            n_props = len(schema.get("properties", {}))
-            print(f"  {dt:<15} → {output_path}  ({n_props} properties)")
-        except Exception as e:
-            print(f"  {dt:<15} ERROR: {e}")
-
-
-ROUTES = {
-    "curator": build_with_curator,
-    "schematic": build_with_schematic,
-}
 
 
 def main():
     parser = argparse.ArgumentParser(description="Generate JSON Schema files from a data model CSV.")
-    parser.add_argument("--route", choices=sorted(ROUTES), default="curator",
-                         help="Build route to use (default: curator)")
     parser.add_argument("--source", default=DATA_MODEL_SOURCE)
     parser.add_argument("--output", default=OUTPUT_DIRECTORY)
     args = parser.parse_args()
 
     os.makedirs(args.output, exist_ok=True)
 
-    ROUTES[args.route](args.source, DATA_TYPES, args.output)
+    build_with_curator(args.source, DATA_TYPES, args.output)
 
 
 if __name__ == "__main__":

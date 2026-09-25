@@ -1,28 +1,16 @@
-"""Convert NAMHub LinkML schemas to a schematic/Curator-compatible CSV data model.
+"""Convert NAMHub LinkML schemas to a Curator-compatible CSV data model.
 
 Reads portal_schemas/namhub.yaml and portal_schemas/enums.yaml and writes
-namhub.model.csv. Two output formats are supported via --format:
+namhub.model.csv, for use with synapseclient.extensions.curator. Headers:
+    Attribute, Description, Valid Values, DependsOn, Required, Properties,
+    Validation Rules, columnType, Format, Pattern, Minimum, Maximum,
+    IsTemplate, Source
 
-  curator (default) — the format in modules/dataLandscape/annotationProperty.csv,
-    for use with synapseclient.extensions.curator (create_json_from_model.py
-    --route curator). Headers:
-        Attribute, Description, Valid Values, DependsOn, Required, Properties,
-        Validation Rules, columnType, Format, Pattern, Minimum, Maximum,
-        IsTemplate, Source
-
-  schematic — the original format expected by schematicpy's DataModelParser
-    (create_json_from_model.py --route schematic). Headers:
-        Attribute, Description, Valid Values, DependsOn, DependsOn Component,
-        Required, Parent, Validation Rules, Properties, Source
-
-Mapping from LinkML (shared):
-    class             → template row: DependsOn = slot list
+Mapping from LinkML:
+    class             → template row: DependsOn = slot list, IsTemplate = True
     slot              → attribute row: Required = True if required in the
                         base slot definition or any class slot_usage
     range: <Enum>     → Valid Values = comma-separated permissible_values
-
-curator-only mapping:
-    class             → IsTemplate = True
     range: date       → columnType = string, Format = date
     range: uri        → columnType = string, Format = uri
     range: integer     → columnType = number
@@ -31,18 +19,14 @@ curator-only mapping:
     pattern            → Pattern
     minimum_value/maximum_value → Minimum/Maximum
 
-schematic-only mapping:
-    slot              → Parent = all classes using it
-
 Usage:
-    python linkml_to_csv.py [--format curator|schematic] [--output namhub.model.csv]
+    python linkml_to_csv.py [--output namhub.model.csv]
 """
 
 import argparse
 import csv
 import re
 from pathlib import Path
-from collections import defaultdict
 
 import yaml
 
@@ -65,18 +49,6 @@ CURATOR_HEADERS = [
     "Source",
 ]
 
-SCHEMATIC_HEADERS = [
-    "Attribute",
-    "Description",
-    "Valid Values",
-    "DependsOn",
-    "DependsOn Component",
-    "Required",
-    "Parent",
-    "Validation Rules",
-    "Properties",
-    "Source",
-]
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -221,100 +193,26 @@ def convert_curator(namhub_schema: dict, enums_schema: dict) -> list[dict]:
     return rows
 
 
-# ── schematic format ─────────────────────────────────────────────────────────────
-
-def convert_schematic(namhub_schema: dict, enums_schema: dict) -> list[dict]:
-    enum_lookup = build_enum_lookup(enums_schema, namhub_schema)
-    all_classes: dict[str, dict] = namhub_schema.get("classes") or {}
-    slot_required = build_slot_required(namhub_schema)
-
-    # Build reverse map: slot_name → [class_name, ...]
-    slot_parents: dict[str, list[str]] = defaultdict(list)
-    for class_name, class_def in all_classes.items():
-        for slot_name in (class_def.get("slots") or []):
-            slot_parents[slot_name].append(class_name)
-
-    rows: list[dict] = []
-    emitted_slots: set[str] = set()
-
-    for class_name, class_def in all_classes.items():
-        class_slots: list[str] = class_def.get("slots") or []
-
-        # Template row — DependsOn lists the slots for this template
-        rows.append({
-            "Attribute": class_name,
-            "Description": normalise_text(class_def.get("description", "")),
-            "Valid Values": "",
-            "DependsOn": ", ".join(class_slots),
-            "DependsOn Component": "",
-            "Required": "",
-            "Parent": "",
-            "Validation Rules": "",
-            "Properties": "",
-            "Source": "",
-        })
-
-        # Slot rows (emitted once globally; Parent lists all classes that use them)
-        for slot_name in class_slots:
-            if slot_name in emitted_slots:
-                continue
-            emitted_slots.add(slot_name)
-
-            merged = merge_slot_def(slot_name, namhub_schema)
-            desc = normalise_text(merged.get("description", ""))
-            valid_vals = get_valid_values(merged, enum_lookup)
-            required = "TRUE" if slot_required.get(slot_name) else "FALSE"
-            parents = ", ".join(slot_parents[slot_name])
-
-            rows.append({
-                "Attribute": slot_name,
-                "Description": desc,
-                "Valid Values": valid_vals,
-                "DependsOn": "",
-                "DependsOn Component": "",
-                "Required": required,
-                "Parent": parents,
-                "Validation Rules": "",
-                "Properties": "",
-                "Source": "",
-            })
-
-    return rows
-
-
-FORMATS = {
-    "curator": (CURATOR_HEADERS, convert_curator),
-    "schematic": (SCHEMATIC_HEADERS, convert_schematic),
-}
-
-
 def main():
-    parser = argparse.ArgumentParser(description="Convert LinkML schemas to a schematic/Curator-compatible CSV.")
-    parser.add_argument("--format", choices=sorted(FORMATS), default="curator",
-                         help="CSV format to emit (default: curator)")
+    parser = argparse.ArgumentParser(description="Convert LinkML schemas to a Curator-compatible CSV.")
     parser.add_argument("--output", default="namhub.model.csv")
     parser.add_argument("--schema", default=str(SCHEMA_DIR / "namhub.yaml"))
     parser.add_argument("--enums", default=str(SCHEMA_DIR / "enums.yaml"))
     args = parser.parse_args()
 
-    headers, convert = FORMATS[args.format]
-
     namhub_schema = load_yaml(Path(args.schema))
     enums_schema = load_yaml(Path(args.enums))
 
-    rows = convert(namhub_schema, enums_schema)
+    rows = convert_curator(namhub_schema, enums_schema)
 
     with open(args.output, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=headers)
+        writer = csv.DictWriter(f, fieldnames=CURATOR_HEADERS)
         writer.writeheader()
         writer.writerows(rows)
 
-    if args.format == "curator":
-        templates = sum(1 for r in rows if r["IsTemplate"] == "True")
-    else:
-        templates = sum(1 for r in rows if not r["Parent"] and r["DependsOn"])
+    templates = sum(1 for r in rows if r["IsTemplate"] == "True")
     slots = len(rows) - templates
-    print(f"Wrote {len(rows)} rows ({templates} templates, {slots} slots) → {args.output} [{args.format} format]")
+    print(f"Wrote {len(rows)} rows ({templates} templates, {slots} slots) → {args.output}")
 
 
 if __name__ == "__main__":
