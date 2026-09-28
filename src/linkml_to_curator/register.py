@@ -13,11 +13,12 @@ Usage:
 """
 
 import json
-from importlib.metadata import version as package_version
 from pathlib import Path
 
 import click
 from linkml_runtime import SchemaView
+
+from linkml_to_curator import __version__
 
 
 def resolve_version(version: str | None, schema_path: str | None) -> str:
@@ -59,7 +60,7 @@ def register(service, directory: Path, org: str, version: str, dry_run: bool) ->
 
 
 @click.command()
-@click.version_option(package_version("linkml-to-curator"), "-V", "--version-info")
+@click.version_option(__version__, "-V", "--version-info")
 @click.argument("directory", type=click.Path(exists=True, file_okay=False, path_type=Path))
 @click.option("--org", required=True, help="Synapse organization, e.g. NAMhub.")
 @click.option("--schema", type=click.Path(exists=True, dir_okay=False),
@@ -68,6 +69,7 @@ def register(service, directory: Path, org: str, version: str, dry_run: bool) ->
 @click.option("--dry-run", is_flag=True, help="Have Synapse validate without storing.")
 def cli(directory: Path, org: str, schema: str | None, version: str | None, dry_run: bool):
     """Register each <Class>.json in DIRECTORY with a Synapse organization."""
+    # Imported here so that only this command pays synapseclient's slow import.
     import synapseclient
     from synapseclient.services.json_schema import JsonSchemaService
 

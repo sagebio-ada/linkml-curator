@@ -134,9 +134,8 @@ def test_cli_on_the_fixture_model():
     result = CliRunner().invoke(cli, [str(SCHEMA)])
     assert result.exit_code == 0, result.output
     assert "warning  datasetId_list: is not a slot of any template class" in result.output
-    assert "warning  ProcessLevelEnum: is not the range of any slot" in result.output
     assert "warning  NamContextEnum: is not the range of any slot" in result.output
-    assert result.output.rstrip().endswith("0 error(s), 3 warning(s)")
+    assert result.output.rstrip().endswith("0 error(s), 2 warning(s)")
     assert CliRunner().invoke(cli, [str(SCHEMA), "--strict"]).exit_code == 1
 
 

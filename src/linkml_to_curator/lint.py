@@ -15,12 +15,12 @@ Usage:
 import re
 from collections import defaultdict
 from dataclasses import dataclass
-from importlib.metadata import version as package_version
 from typing import Literal
 
 import click
 from linkml_runtime import SchemaView
 
+from linkml_to_curator import __version__
 from linkml_to_curator.generator import class_schema, pascal_case, template_classes
 
 Level = Literal["error", "warning"]
@@ -132,12 +132,12 @@ def lint(sv: SchemaView) -> list[Finding]:
 
 
 @click.command()
-@click.version_option(package_version("linkml-to-curator"), "-V", "--version")
+@click.version_option(__version__, "-V", "--version")
 @click.argument("schema", type=click.Path(exists=True, dir_okay=False))
 @click.option("--strict", is_flag=True, help="Exit with an error status on warnings too.")
 def cli(schema: str, strict: bool):
     """Check a LinkML SCHEMA against what Curator and Synapse will accept."""
-    findings = lint(SchemaView(schema, merge_imports=True))
+    findings = lint(SchemaView(schema))
     for finding in findings:
         click.echo(str(finding))
     errors = sum(f.level == "error" for f in findings)

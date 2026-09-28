@@ -15,31 +15,30 @@ The tool has three commands:
 
 ## Setup
 
-* **uv**, which installs and runs Python tools. One-line installation in the
-[uv installation guide](https://docs.astral.sh/uv/getting-started/installation/). Every command
-in this README that starts with `uv run` uses it.
+You need two things:
 
-**A Synapse access token**, for registering schemas, but not generating them. The script looks for a `SYNAPSE_AUTH_TOKEN` environment variable or a `.synapseConfig` file in your home folder:
+- **uv**, which installs and runs Python tools. One-line installation in the
+  [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/). Every
+  command in this README that starts with `uv run` uses it.
+- **A Synapse access token**, for registering schemas but not for generating them. The tool
+  looks for a `SYNAPSE_AUTH_TOKEN` environment variable or a `.synapseConfig` file in your home
+  folder:
 
-```ini
-[authentication]
-authtoken = paste-your-token-here
-```
-
+  ```ini
+  [authentication]
+  authtoken = paste-your-token-here
+  ```
 
 ## Installing
 
-Once your LinkML project is configured to use this generator, all these commands
-will be available by running `uv sync`.
-
-To add this to your project, open a terminal in the root of your LinkML project and run:
+Open a terminal in the root of your LinkML project and run:
 
 ```bash
 uv add --dev "linkml-to-curator @ git+https://github.com/sagebio-ada/linkml-to-curator"
 ```
 
-That records the tool as a dependency of the project, so anyone else who clones the project gets
-it with `uv sync` afterward.
+That records the tool as a dependency of the project, so anyone who clones the project gets all
+three commands with `uv sync`.
 
 ## Checking the model
 
@@ -53,15 +52,15 @@ uv run curator-lint src/namhub/schema/namhub.yaml
 Each line names the class, slot or enum and what is wrong with it, and the command exits with
 an error status if there are any errors. Some examples:
 
-- A constraint that doesn't fit the slot's type, the same check `gen-curator` makes
+- A constraint that doesn't fit the slot's type, the same check `gen-curator` makes.
 - LinkML names that would become the same Curator property, such as `datasetId` and
-  `dataset_id`
+  `dataset_id`.
 - A `pattern` that doesn't compile, or that uses Python's `(?P<name>)` group syntax, which the
-  Java regex engine on Synapse doesn't read. Write `(?<name>)`;
-- Broken lists: an enum with no values, a value that is empty or has whitespace around it, or two values that
-  differ only by case or punctuation, such as `RNA-seq` and `rna seq`;
+  Java regex engine on Synapse doesn't read. Write `(?<name>)`.
+- Broken enums: one with no values, a value that is empty or has whitespace around it, or two
+  values that differ only by case or punctuation, such as `RNA-seq` and `rna seq`.
 - A `slot_usage` entry naming a slot the class doesn't have, or a `range` that isn't a type,
-  class or enum. (LinkML accepts both, but these will cause problems for us.)
+  class or enum. LinkML accepts both, but Curator can't use the result.
 
 Pass `--strict` to fail on warnings too. The check suits a project's test recipe or CI, see
 [Running it automatically](#running-it-automatically).
@@ -124,8 +123,8 @@ other than the model's, pass `--version 1.2.1` instead of `--schema`.
 
 ## Running it automatically
 
-Both commands can run from a project's task runner or from GitHub Actions, so the schemas stay
-in step with the model.
+All three commands can run from a project's task runner or from GitHub Actions, so the schemas
+stay in step with the model.
 
 In a [linkml-project-copier](https://github.com/linkml/linkml-project-copier) project, add
 recipes to `project.justfile` so that `uv run just lint-curator` checks the model and

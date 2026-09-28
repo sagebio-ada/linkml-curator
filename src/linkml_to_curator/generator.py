@@ -19,14 +19,13 @@ import json
 import os
 import re
 from dataclasses import dataclass
-from importlib.metadata import version
 
 import click
 from linkml.utils.generator import Generator, shared_arguments
 from linkml_runtime import SchemaView
 from linkml_runtime.linkml_model.meta import SlotDefinition
 
-__version__ = version("linkml-to-curator")
+from linkml_to_curator import __version__
 
 TYPES = {"integer": "number", "float": "number", "double": "number", "decimal": "number",
          "boolean": "boolean"}
@@ -61,16 +60,20 @@ def value_schema(sv: SchemaView, slot: SlotDefinition) -> dict:
     """Schema for one value of the slot."""
     enum = sv.all_enums().get(slot.range)
     json_type = None if enum else TYPES.get(slot.range, "string")
+    constraints = {}
     for keyword, value, needs in (
         ("pattern", slot.pattern, "string"),
         ("minimum_value", slot.minimum_value, "number"),
         ("maximum_value", slot.maximum_value, "number"),
     ):
-        if value is not None and json_type != needs:
+        if value is None:
+            continue
+        if json_type != needs:
             raise ValueError(
                 f"Slot {slot.name!r} sets {keyword} ({value!r}), which needs a {needs} range, "
                 f"but its range {slot.range!r} is emitted as {json_type or 'an enum'}."
             )
+        constraints[keyword.removesuffix("_value")] = value
 
     if enum:
         pvs = enum.permissible_values
@@ -85,13 +88,7 @@ def value_schema(sv: SchemaView, slot: SlotDefinition) -> dict:
     schema = {"type": json_type}
     if slot.range in FORMATS:
         schema["format"] = FORMATS[slot.range]
-    if slot.pattern:
-        schema["pattern"] = slot.pattern
-    if slot.minimum_value is not None:
-        schema["minimum"] = slot.minimum_value
-    if slot.maximum_value is not None:
-        schema["maximum"] = slot.maximum_value
-    return schema
+    return schema | constraints
 
 
 def class_schema(sv: SchemaView, class_name: str) -> dict:
