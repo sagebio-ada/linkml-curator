@@ -7,7 +7,7 @@ draft-07 JSON schema shaped for Curator's grid and the RJSF forms that render it
 - a property's title is the slot's LinkML title, or one derived from its name;
 - enum values are sorted, and if any value has a description the enum becomes
   oneOf/const entries, the only per-value metadata RJSF reads;
-- integer, float, double and decimal are typed number (see CLAUDE.md);
+- integer, float, double and decimal are typed number;
 - multivalued slots are arrays of the single-value schema.
 
 Usage:

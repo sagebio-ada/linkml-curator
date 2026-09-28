@@ -10,6 +10,9 @@ venv/
 .DS_Store
 .vscode/settings.json
 
+# Maintainers' design notes, kept out of the repo
+CLAUDE.md
+
 # Tooling caches
 .pytest_cache/
 .ruff_cache/
