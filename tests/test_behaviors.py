@@ -7,10 +7,10 @@ def test_enum_values_keep_spaces(schemas):
 
 
 def test_enum_value_descriptions_become_oneof_consts(schemas):
-    one_of = schemas["Landscape"]["properties"]["DatasetProcessingLevel"]["oneOf"]
-    level1 = next(v for v in one_of if v["const"] == "Level 1")
-    assert level1["title"] == "Level 1"
-    assert level1["description"] == "Raw or minimally processed data."
+    one_of = schemas["NAMs"]["properties"]["DevelopmentStatus"]["oneOf"]
+    status = next(v for v in one_of if v["const"] == "In Development")
+    assert status["title"] == "In Development"
+    assert status["description"] == "Method is being actively developed."
 
 
 def test_property_keys_are_pascal_case(schemas):

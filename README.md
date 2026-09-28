@@ -7,8 +7,9 @@ organization.
 >[!WARNING]
 >This tool is **still in early development** at Sage Bionetworks. Bug reports and questions are welcome in the [issue tracker](https://github.com/sagebio-ada/linkml-to-curator/issues).
 
-The tool has two commands:
+The tool has three commands:
 
+- `curator-lint` checks your LinkML model for things Curator or Synapse will reject.
 - `gen-curator` reads your LinkML model and writes one JSON schema file per class.
 - `curator-register` takes a folder of those JSON files and registers each one with Synapse.
 
@@ -28,25 +29,42 @@ authtoken = paste-your-token-here
 
 ## Installing
 
-Open a terminal in the LinkML project that holds your model, the folder with the
-`pyproject.toml` and `src/` in it, and run:
+Once your LinkML project is configured to use this generator, all these commands
+will be available by running `uv sync`.
+
+To add this to your project, open a terminal in the root of your LinkML project and run:
 
 ```bash
 uv add --dev "linkml-to-curator @ git+https://github.com/sagebio-ada/linkml-to-curator"
 ```
 
 That records the tool as a dependency of the project, so anyone else who clones the project gets
-it with `uv sync`.
+it with `uv sync` afterward.
 
-If you would rather not change the project, install the two commands on their own:
+## Checking the model
+
+`curator-lint` reads the model and reports what would stop generation or registration, or what
+Synapse would reject once registered:
 
 ```bash
-uv tool install git+https://github.com/sagebio-ada/linkml-to-curator
+uv run curator-lint src/namhub/schema/namhub.yaml
 ```
 
-If that ends with a warning that a folder is not on your `PATH`, run `uv tool update-shell` and
-open a new terminal. After that, run the commands without the `uv run` prefix used in the
-examples below.
+Each line names the class, slot or enum and what is wrong with it, and the command exits with
+an error status if there are any errors. Some examples:
+
+- A constraint that doesn't fit the slot's type, the same check `gen-curator` makes
+- LinkML names that would become the same Curator property, such as `datasetId` and
+  `dataset_id`
+- A `pattern` that doesn't compile, or that uses Python's `(?P<name>)` group syntax, which the
+  Java regex engine on Synapse doesn't read. Write `(?<name>)`;
+- Broken lists: an enum with no values, a value that is empty or has whitespace around it, or two values that
+  differ only by case or punctuation, such as `RNA-seq` and `rna seq`;
+- A `slot_usage` entry naming a slot the class doesn't have, or a `range` that isn't a type,
+  class or enum. (LinkML accepts both, but these will cause problems for us.)
+
+Pass `--strict` to fail on warnings too. The check suits a project's test recipe or CI, see
+[Running it automatically](#running-it-automatically).
 
 ## Generating schemas
 
@@ -109,10 +127,15 @@ other than the model's, pass `--version 1.2.1` instead of `--schema`.
 Both commands can run from a project's task runner or from GitHub Actions, so the schemas stay
 in step with the model.
 
-In a [linkml-project-copier](https://github.com/linkml/linkml-project-copier) project, add a
-recipe to `project.justfile` so that `uv run just gen-curator` regenerates the schemas:
+In a [linkml-project-copier](https://github.com/linkml/linkml-project-copier) project, add
+recipes to `project.justfile` so that `uv run just lint-curator` checks the model and
+`uv run just gen-curator` regenerates the schemas:
 
 ```just
+# Check the model against what Curator and Synapse accept
+lint-curator:
+  uv run curator-lint {{source_schema_path}}
+
 # Generate Synapse Curator JSON schemas
 gen-curator:
   uv run gen-curator -d {{dest}}/curator {{source_schema_path}}
@@ -122,6 +145,7 @@ In GitHub Actions, store the Synapse token as a repository secret named `SYNAPSE
 and add these steps to a workflow:
 
 ```yaml
+- run: uv run just lint-curator
 - run: uv run just gen-curator
 - run: uv run curator-register project/curator --org NAMhub --schema src/namhub/schema/namhub.yaml
   env:

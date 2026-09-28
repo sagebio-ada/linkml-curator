@@ -35,6 +35,7 @@ Issues = "https://github.com/sagebio-ada/linkml-to-curator/issues"
 [project.scripts]
 gen-curator = "linkml_to_curator.generator:cli"
 curator-register = "linkml_to_curator.register:cli"
+curator-lint = "linkml_to_curator.lint:cli"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/linkml_to_curator"]

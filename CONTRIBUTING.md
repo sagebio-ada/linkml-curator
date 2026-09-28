@@ -29,7 +29,9 @@ that changes it should say why. Regenerate the snapshot and review the diff:
 uv run gen-curator tests/fixtures/namhub/namhub.yaml -d tests/fixtures/expected
 ```
 
-Behavior the NAMhub model doesn't exercise is pinned in `tests/test_generator.py`.
+Behavior the NAMhub model doesn't exercise is pinned in `tests/test_generator.py`. Each
+`curator-lint` rule has a test in `tests/test_lint.py` on a small model that trips only that
+rule; a new rule gets one of those.
 
 ## Design notes
 
