@@ -26,7 +26,7 @@ from linkml.utils.generator import Generator, shared_arguments
 from linkml_runtime import SchemaView
 from linkml_runtime.linkml_model.meta import EnumDefinition, PermissibleValue, SlotDefinition
 
-from linkml_to_curator import __version__
+from linkml_curator import __version__
 
 TYPES = {"integer": "number", "float": "number", "double": "number", "decimal": "number",
          "boolean": "boolean"}

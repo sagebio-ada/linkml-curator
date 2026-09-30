@@ -3,7 +3,7 @@ import json
 import click
 import pytest
 
-from linkml_to_curator.register import register, resolve_version
+from linkml_curator.register import register, resolve_version
 
 SCHEMA = """
 id: https://example.org/test

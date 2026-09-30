@@ -3,7 +3,7 @@
 import pytest
 from linkml_runtime import SchemaView
 
-from linkml_to_curator.generator import class_schema, template_classes
+from linkml_curator.generator import class_schema, template_classes
 
 SCHEMA = """
 id: https://example.org/probe

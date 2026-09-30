@@ -1,11 +1,11 @@
-# linkml-to-curator
+# linkml-curator
 
 Turn a [LinkML](https://linkml.io) data model into the JSON schemas that
 [Synapse](https://www.synapse.org) Curator uses, and register those schemas with a Synapse
 organization.
 
 >[!WARNING]
->This tool is **still in early development** at Sage Bionetworks. Bug reports and questions are welcome in the [issue tracker](https://github.com/sagebio-ada/linkml-to-curator/issues).
+>This tool is **still in early development** at Sage Bionetworks. Bug reports and questions are welcome in the [issue tracker](https://github.com/sagebio-ada/linkml-curator/issues).
 
 The tool has three commands:
 
@@ -34,7 +34,7 @@ You need two things:
 Open a terminal in the root of your LinkML project and run:
 
 ```bash
-uv add --dev "linkml-to-curator @ git+https://github.com/sagebio-ada/linkml-to-curator"
+uv add --dev "linkml-curator @ git+https://github.com/sagebio-ada/linkml-curator"
 ```
 
 That records the tool as a dependency of the project, so anyone who clones the project gets all

@@ -5,7 +5,7 @@ from click.testing import CliRunner
 from linkml_runtime import SchemaView
 
 from conftest import SCHEMA
-from linkml_to_curator.lint import cli, lint
+from linkml_curator.lint import cli, lint
 
 CLEAN = """
 id: https://example.org/probe

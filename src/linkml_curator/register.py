@@ -18,7 +18,7 @@ from pathlib import Path
 import click
 from linkml_runtime import SchemaView
 
-from linkml_to_curator import __version__
+from linkml_curator import __version__
 
 
 def resolve_version(version: str | None, schema_path: str | None) -> str:

@@ -20,8 +20,8 @@ from typing import Literal
 import click
 from linkml_runtime import SchemaView
 
-from linkml_to_curator import __version__
-from linkml_to_curator.generator import class_schema, enum_values, pascal_case, template_classes
+from linkml_curator import __version__
+from linkml_curator.generator import class_schema, enum_values, pascal_case, template_classes
 
 Level = Literal["error", "warning"]
 

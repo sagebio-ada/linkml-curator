@@ -2,4 +2,4 @@
 
 from importlib.metadata import version
 
-__version__ = version("linkml-to-curator")
+__version__ = version("linkml-curator")

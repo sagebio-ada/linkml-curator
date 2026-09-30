@@ -1,7 +1,7 @@
 from click.testing import CliRunner
 
 from conftest import EXPECTED, SCHEMA
-from linkml_to_curator.generator import cli
+from linkml_curator.generator import cli
 
 
 def test_top_class_prints_one_schema():

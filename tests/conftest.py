@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from linkml_to_curator.generator import cli
+from linkml_curator.generator import cli
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SCHEMA = FIXTURES / "namhub" / "namhub.yaml"

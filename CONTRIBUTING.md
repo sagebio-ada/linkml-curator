@@ -1,7 +1,7 @@
 # Contributing
 
 Bug reports, questions and pull requests are welcome. Please open an
-[issue](https://github.com/sagebio-ada/linkml-to-curator/issues) before starting on a large
+[issue](https://github.com/sagebio-ada/linkml-curator/issues) before starting on a large
 change, so we can agree on the approach first.
 
 When reporting a problem with generated output, include the LinkML model (or a minimal slice
