@@ -16,18 +16,24 @@ enums:
     permissible_values:
       red: {description: The red one.}
       Blue:
+      sea_green: {title: Sea Green}
+  Size:
+    permissible_values:
+      sm: {title: Small}
+      large:
 slots:
   nodesc: {}
   bounded: {range: integer, minimum_value: 1, maximum_value: 10}
   counts: {range: float, multivalued: true}
   colors: {range: Color, multivalued: true}
   snake_case_name: {pattern: "^a", multivalued: true}
+  size: {range: Size}
   fancy: {title: Very Fancy}
 classes:
   Base: {abstract: true, slots: [nodesc]}
   Probe:
     is_a: Base
-    slots: [bounded, counts, colors, snake_case_name, fancy]
+    slots: [bounded, counts, colors, snake_case_name, size, fancy]
 """
 
 
@@ -55,8 +61,13 @@ def test_multivalued_values_are_arrays():
     }
     assert p["Colors"]["items"] == {"type": "string", "oneOf": [
         {"const": "Blue", "title": "Blue"},
+        {"const": "Sea Green", "title": "Sea Green"},
         {"const": "red", "title": "red", "description": "The red one."},
     ]}
+
+
+def test_enum_value_title_is_the_value():
+    assert props()["Size"] == {"title": "Size", "enum": ["Small", "large"]}
 
 
 def test_linkml_title_wins():

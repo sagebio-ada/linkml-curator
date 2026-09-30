@@ -58,7 +58,8 @@ an error status if there are any errors. Some examples:
 - A `pattern` that doesn't compile, or that uses Python's `(?P<name>)` group syntax, which the
   Java regex engine on Synapse doesn't read. Write `(?<name>)`.
 - Broken enums: one with no values, a value that is empty or has whitespace around it, or two
-  values that differ only by case or punctuation, such as `RNA-seq` and `rna seq`.
+  values that differ only by case or punctuation, such as `RNA-seq` and `rna seq`. A value
+  is checked as the generator writes it, so by its title if it has one.
 - A `slot_usage` entry naming a slot the class doesn't have, or a `range` that isn't a type,
   class or enum. LinkML accepts both, but Curator can't use the result.
 
@@ -159,7 +160,8 @@ Every class that is not abstract or a mixin becomes a draft-07 JSON schema. For 
   (`datasetAssay` and `dataset_assay` → `DatasetAssay`);
 - a property's title is the slot's LinkML `title:`, or else one derived from the slot name
   (`uploadByDate` → `Upload By Date`, `landscapeId` → `Landscape_id`);
-- enum values are sorted, and if any value has a description they become `oneOf` entries
+- an enum value is its LinkML `title:`, or else its name (`atac_seq: {title: ATAC-seq}` →
+  `ATAC-seq`); values are sorted, and if any has a description they become `oneOf` entries
   with `const`, `title` and `description`;
 - `integer`, `float`, `double` and `decimal` are typed `number`; `date`, `datetime` and `uri`
   are strings with a `format`;

@@ -21,7 +21,7 @@ import click
 from linkml_runtime import SchemaView
 
 from linkml_to_curator import __version__
-from linkml_to_curator.generator import class_schema, pascal_case, template_classes
+from linkml_to_curator.generator import class_schema, enum_values, pascal_case, template_classes
 
 Level = Literal["error", "warning"]
 
@@ -107,7 +107,7 @@ def lint(sv: SchemaView) -> list[Finding]:
             warnings.append(Finding("warning", name, "is not a slot of any template class"))
 
     for name, enum in enums.items():
-        values = list(enum.permissible_values)
+        values = [v for v, _ in enum_values(enum)]
         if not values:
             errors.append(Finding("error", name, "has no permissible values"))
         seen = defaultdict(list)

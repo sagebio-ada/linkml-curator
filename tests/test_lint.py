@@ -102,6 +102,15 @@ def test_enum_values_that_differ_only_by_case_or_punctuation():
                       "values differ only by case or punctuation: 'RNA-seq', 'rna seq'")}
 
 
+def test_enum_values_are_checked_by_title():
+    found = findings(**{"      Blue:\n": "      Blue:\n      rna_seq: {title: RNA-seq}\n"
+                        "      rna_seq_2: {title: rna seq}\n      teal: {title: ' teal'}\n"})
+    assert found == {
+        ("error", "Color", "values differ only by case or punctuation: 'RNA-seq', 'rna seq'"),
+        ("error", "Color", "value ' teal' has surrounding whitespace"),
+    }
+
+
 def test_descriptions_are_warnings():
     found = findings(**{"    description: The one class.\n": "",
                         "{description: Its colour., ": "{",

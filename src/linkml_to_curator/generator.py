@@ -5,8 +5,9 @@ draft-07 JSON schema shaped for Curator's grid and the RJSF forms that render it
 
 - properties are keyed by the PascalCase slot name (datasetAssay → DatasetAssay);
 - a property's title is the slot's LinkML title, or one derived from its name;
-- enum values are sorted, and if any value has a description the enum becomes
-  oneOf/const entries, the only per-value metadata RJSF reads;
+- an enum value is its LinkML title, or its name if it has none; values are
+  sorted, and if any has a description the enum becomes oneOf/const entries,
+  the only per-value metadata RJSF reads;
 - integer, float, double and decimal are typed number;
 - multivalued slots are arrays of the single-value schema.
 
@@ -23,7 +24,7 @@ from dataclasses import dataclass
 import click
 from linkml.utils.generator import Generator, shared_arguments
 from linkml_runtime import SchemaView
-from linkml_runtime.linkml_model.meta import SlotDefinition
+from linkml_runtime.linkml_model.meta import EnumDefinition, PermissibleValue, SlotDefinition
 
 from linkml_to_curator import __version__
 
@@ -56,6 +57,11 @@ def template_classes(sv: SchemaView) -> list[str]:
     return [name for name, c in sv.all_classes().items() if not (c.abstract or c.mixin)]
 
 
+def enum_values(enum: EnumDefinition) -> list[tuple[str, PermissibleValue]]:
+    """Each permissible value with the string Curator stores for it, in schema order."""
+    return [(pv.title or name, pv) for name, pv in enum.permissible_values.items()]
+
+
 def value_schema(sv: SchemaView, slot: SlotDefinition) -> dict:
     """Schema for one value of the slot."""
     enum = sv.all_enums().get(slot.range)
@@ -76,13 +82,13 @@ def value_schema(sv: SchemaView, slot: SlotDefinition) -> dict:
         constraints[keyword.removesuffix("_value")] = value
 
     if enum:
-        pvs = enum.permissible_values
-        if not any(pv.description for pv in pvs.values()):
-            return {"enum": sorted(pvs)}
+        values = sorted(enum_values(enum), key=lambda v: v[0])
+        if not any(pv.description for _, pv in values):
+            return {"enum": [v for v, _ in values]}
         return {"oneOf": [
             {"const": v, "title": v,
-             **({"description": normalise_text(pvs[v].description)} if pvs[v].description else {})}
-            for v in sorted(pvs)
+             **({"description": normalise_text(pv.description)} if pv.description else {})}
+            for v, pv in values
         ]}
 
     schema = {"type": json_type}
