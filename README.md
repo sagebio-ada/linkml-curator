@@ -31,14 +31,15 @@ You need two things:
 
 ## Installing
 
-Open a terminal in the root of your LinkML project and run:
+If linml-curator is already configured in your your LinkML project, you should interact with it by opening a terminal in the root of that repository. The NAMHub project, for example:
 
-```bash
-uv add --dev "linkml-curator @ git+https://github.com/sagebio-ada/linkml-curator"
+```sh
+git clone git@github.com:sagebio-ada/nam-hub-models.git
+cd nam-hub-models/
+uv sync
 ```
 
-That records the tool as a dependency of the project, so anyone who clones the project gets all
-three commands with `uv sync`.
+All necessary dependencies should be installed at this point.
 
 ## Checking the model
 
@@ -123,6 +124,20 @@ changing `version:` in the model, regenerating, and registering. To register und
 other than the model's, pass `--version 1.2.1` instead of `--schema`.
 
 ## Running it automatically
+
+
+### Adding to your repo
+
+Open a terminal in the root of your LinkML project and run:
+
+```bash
+uv add --dev "linkml-curator @ git+https://github.com/sagebio-ada/linkml-curator"
+```
+
+That records the tool as a dependency of the project, so anyone who clones the project gets all
+three commands with `uv sync`.
+
+### Project task runner
 
 All three commands can run from a project's task runner or from GitHub Actions, so the schemas
 stay in step with the model.
